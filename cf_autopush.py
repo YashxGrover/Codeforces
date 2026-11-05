@@ -156,6 +156,23 @@ def fetch_contest_names() -> Dict[int, str]:
     return mapping
 
 
+def resolve_missing_names(subs: List[dict], mapping: Dict[int, str]) -> Dict[int, str]:
+    missing = set()
+    for sub in subs:
+        cid = sub.get("contestId") or sub.get("problem", {}).get("contestId")
+        if cid and cid not in mapping:
+            missing.add(cid)
+    for cid in sorted(missing):
+        try:
+            result = cf_api_request("contest.get", {"contestId": str(cid)})
+            mapping[cid] = result.get("name", f"Contest_{cid}")
+            print(f"    Resolved {cid}: {mapping[cid]}")
+        except Exception:
+            mapping[cid] = f"Contest_{cid}"
+        time.sleep(2)
+    return mapping
+
+
 # -- GitHub --
 
 def load_pushed_state(repo) -> Set[int]:
@@ -179,16 +196,24 @@ def save_pushed_state(repo, pushed_ids: Set[int], branch: str):
 def batch_commit_files(repo, file_dict: Dict[str, str], message: str, branch: str):
     if not file_dict:
         return
-    ref = repo.get_git_ref(f"heads/{branch}")
-    latest_commit = repo.get_git_commit(ref.object.sha)
-    base_tree = latest_commit.tree
-    tree_elements = []
-    for path, content in file_dict.items():
-        blob = repo.create_git_blob(content, "utf-8")
-        tree_elements.append(InputGitTreeElement(path=path, mode="100644", type="blob", sha=blob.sha))
-    new_tree = repo.create_git_tree(tree_elements, base_tree)
-    new_commit = repo.create_git_commit(message, new_tree, [latest_commit])
-    ref.edit(new_commit.sha)
+    for attempt in range(3):
+        try:
+            ref = repo.get_git_ref(f"heads/{branch}")
+            latest_commit = repo.get_git_commit(ref.object.sha)
+            base_tree = latest_commit.tree
+            tree_elements = []
+            for path, content in file_dict.items():
+                blob = repo.create_git_blob(content, "utf-8")
+                tree_elements.append(InputGitTreeElement(path=path, mode="100644", type="blob", sha=blob.sha))
+            new_tree = repo.create_git_tree(tree_elements, base_tree)
+            new_commit = repo.create_git_commit(message, new_tree, [latest_commit])
+            ref.edit(new_commit.sha)
+            return
+        except GithubException as e:
+            if "not a fast forward" in str(e) and attempt < 2:
+                time.sleep(5)
+                continue
+            raise
 
 
 # -- Dedup --
@@ -280,6 +305,7 @@ def main():
 
     print("[5/6] Contest names...")
     contest_names = fetch_contest_names()
+    contest_names = resolve_missing_names(new_subs, contest_names)
 
     print(f"[6/6] Pushing {len(new_subs)} files...")
     file_map = {}
