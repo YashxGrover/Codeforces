@@ -96,7 +96,15 @@ def cf_api_request(method: str, params: Optional[Dict] = None) -> dict:
     api_sig = rand_prefix + sig_hash
     params["apiSig"] = api_sig
     url = f"{CF_API_BASE}/{method}"
-    resp = requests.get(url, params=params, timeout=30)
+    for attempt in range(3):
+        try:
+            resp = requests.get(url, params=params, timeout=60)
+            break
+        except requests.exceptions.Timeout:
+            if attempt < 2:
+                time.sleep(5)
+            else:
+                raise
     if resp.status_code != 200:
         print(f"    API {method} -> {resp.status_code}")
         try:
@@ -149,9 +157,12 @@ def fetch_contest_names() -> Dict[int, str]:
     print("  Fetching contest names...")
     mapping = {}
     for gym in ["false", "true"]:
-        contests = cf_api_request("contest.list", {"gym": gym})
-        for c in contests:
-            mapping[c["id"]] = c.get("name", f"Contest_{c['id']}")
+        try:
+            contests = cf_api_request("contest.list", {"gym": gym})
+            for c in contests:
+                mapping[c["id"]] = c.get("name", f"Contest_{c['id']}")
+        except Exception as e:
+            print(f"    Warning: contest.list gym={gym} failed: {e}")
         time.sleep(2)
     return mapping
 
