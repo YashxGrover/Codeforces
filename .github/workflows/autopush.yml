@@ -2,34 +2,28 @@ name: Codeforces AutoPush
 
 on:
   schedule:
-    # Run every 30 minutes
-    - cron: "*/30 * * * *"
-  workflow_dispatch: # Allow manual trigger from GitHub UI
-
-permissions:
-  contents: write
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
 
 jobs:
-  sync:
+  push:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install requests PyGithub
 
-      - name: Check environment configuration
+      - name: Run auto-push
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           CF_API_SECRET: ${{ secrets.CF_API_SECRET }}
           CF_HANDLE: ${{ secrets.CF_HANDLE }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-          GITHUB_REPO: ${{ secrets.TARGET_REPO }}
-        run: python cf_autopush.py
+          GITHUB_REPO: ${{ secrets.GITHUB_REPO }}
+          GITHUB_TARGET_DIR: ${{ secrets.GITHUB_TARGET_DIR }}
+        run: python cf_autopush.py   
