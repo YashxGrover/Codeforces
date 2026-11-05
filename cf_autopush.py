@@ -164,9 +164,11 @@ def resolve_missing_names(subs: List[dict], mapping: Dict[int, str]) -> Dict[int
             missing.add(cid)
     for cid in sorted(missing):
         try:
-            result = cf_api_request("contest.get", {"contestId": str(cid)})
-            mapping[cid] = result.get("name", f"Contest_{cid}")
-            print(f"    Resolved {cid}: {mapping[cid]}")
+            result = cf_api_request("contest.status", {"contestId": str(cid)})
+            contest_info = result.get("contest", {})
+            name = contest_info.get("name", f"Contest_{cid}")
+            mapping[cid] = name
+            print(f"    Resolved {cid}: {name}")
         except Exception:
             mapping[cid] = f"Contest_{cid}"
         time.sleep(2)
@@ -246,8 +248,11 @@ def build_file_path(sub: dict, contest_names: Dict[int, str]) -> str:
         filename = f"{contest_id}{index}_{safe_name}{ext}" if safe_name else f"{contest_id}{index}{ext}"
         path = f"{rating}/{filename}"
     else:
-        contest_name = contest_names.get(contest_id, f"Contest_{contest_id}")
-        folder = sanitize(f"{contest_name}_{contest_id}")
+        contest_name = contest_names.get(contest_id)
+        if contest_name and not contest_name.startswith(f"Contest_{contest_id}"):
+            folder = sanitize(f"{contest_name}_{contest_id}")
+        else:
+            folder = f"Contest_{contest_id}"
         filename = f"{index}_{safe_name}{ext}" if safe_name else f"{index}{ext}"
         path = f"Contests/{folder}/{filename}"
 
