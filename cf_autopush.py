@@ -1,7 +1,7 @@
 """
 Codeforces Auto-Pusher: Push accepted solutions to GitHub.
-Rated -> Codeforces/<rating>/<contestId><index>.ext
-Unrated -> Codeforces/Contests/<contest_name>_<id>/<index>.ext
+Rated -> Codeforces/<rating>/<contestId><index>_<name>.ext
+Unrated -> Codeforces/Contests/<contest_name>_<id>/<index>_<name>.ext
 """
 
 import base64
@@ -147,9 +147,13 @@ def fetch_accepted_submissions() -> List[dict]:
 
 def fetch_contest_names() -> Dict[int, str]:
     print("  Fetching contest names...")
-    contests = cf_api_request("contest.list", {"gym": "false"})
-    time.sleep(2)
-    return {c["id"]: c.get("name", f"Contest_{c['id']}") for c in contests}
+    mapping = {}
+    for gym in ["false", "true"]:
+        contests = cf_api_request("contest.list", {"gym": gym})
+        for c in contests:
+            mapping[c["id"]] = c.get("name", f"Contest_{c['id']}")
+        time.sleep(2)
+    return mapping
 
 
 # -- GitHub --
@@ -210,14 +214,16 @@ def build_file_path(sub: dict, contest_names: Dict[int, str]) -> str:
     language = sub.get("programmingLanguage", "Unknown")
     ext = get_extension(language)
     rating = problem.get("rating")
+    problem_name = problem.get("name", "")
+    safe_name = sanitize(problem_name) if problem_name else ""
 
     if rating is not None:
-        filename = f"{contest_id}{index}{ext}"
+        filename = f"{contest_id}{index}_{safe_name}{ext}" if safe_name else f"{contest_id}{index}{ext}"
         path = f"{rating}/{filename}"
     else:
         contest_name = contest_names.get(contest_id, f"Contest_{contest_id}")
         folder = sanitize(f"{contest_name}_{contest_id}")
-        filename = f"{index}{ext}"
+        filename = f"{index}_{safe_name}{ext}" if safe_name else f"{index}{ext}"
         path = f"Contests/{folder}/{filename}"
 
     if TARGET_DIR:
