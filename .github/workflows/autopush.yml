@@ -23,7 +23,7 @@ jobs:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           CF_API_SECRET: ${{ secrets.CF_API_SECRET }}
           CF_HANDLE: ${{ secrets.CF_HANDLE }}
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-          GITHUB_REPO: ${{ secrets.GITHUB_REPO }}
-          GITHUB_TARGET_DIR: ${{ secrets.GITHUB_TARGET_DIR }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          TARGET_REPO: ${{ secrets.TARGET_REPO }}
+          TARGET_DIR: ${{ secrets.TARGET_DIR }}
         run: python cf_autopush.py   
