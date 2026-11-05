@@ -22,9 +22,9 @@ from github import Auth, Github, GithubException, InputGitTreeElement
 CF_API_KEY = os.environ.get("CF_API_KEY", "")
 CF_API_SECRET = os.environ.get("CF_API_SECRET", "")
 CF_HANDLE = os.environ.get("CF_HANDLE", "")
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
-GITHUB_TARGET_DIR = os.environ.get("GITHUB_TARGET_DIR", "CodeForces")
+GITHUB_TOKEN = os.environ.get("GH_PAT", "")
+GITHUB_REPO = os.environ.get("TARGET_REPO", "")
+GITHUB_TARGET_DIR = os.environ.get("TARGET_DIR", "Codeforces")   
 
 CF_API_BASE = "https://codeforces.com/api"
 STATE_FILE = f"{GITHUB_TARGET_DIR}/pushed.json" if GITHUB_TARGET_DIR else "pushed.json"
