@@ -1,6 +1,7 @@
 """
-Codeforces Auto-Pusher: Automatically push accepted Codeforces solutions to GitHub.
-Organized by rating for rated problems, by contest for unrated.
+Codeforces Auto-Pusher: Push accepted solutions to GitHub.
+Rated -> Codeforces/<rating>/<contestId><index>.ext
+Unrated -> Codeforces/Contests/<contest_name>_<id>/<index>.ext
 """
 
 import base64
@@ -17,20 +18,20 @@ from typing import Dict, List, Optional, Set
 import requests
 from github import Auth, Github, GithubException, InputGitTreeElement
 
-# ── Configuration from environment variables ──────────────────────────────────
+# -- Config --
 
 CF_API_KEY = os.environ.get("CF_API_KEY", "")
 CF_API_SECRET = os.environ.get("CF_API_SECRET", "")
 CF_HANDLE = os.environ.get("CF_HANDLE", "")
-GITHUB_TOKEN = os.environ.get("GH_PAT", "")
-GITHUB_REPO = os.environ.get("TARGET_REPO", "")
-GITHUB_TARGET_DIR = os.environ.get("TARGET_DIR", "Codeforces")   
+GH_PAT = os.environ.get("GH_PAT", "")
+TARGET_REPO = os.environ.get("TARGET_REPO", "")
+TARGET_DIR = os.environ.get("TARGET_DIR", "Codeforces")
 
 CF_API_BASE = "https://codeforces.com/api"
-STATE_FILE = f"{GITHUB_TARGET_DIR}/pushed.json" if GITHUB_TARGET_DIR else "pushed.json"
+STATE_FILE = f"{TARGET_DIR}/pushed.json" if TARGET_DIR else "pushed.json"
 BATCH_SIZE = 50
 
-# ── Language → file extension mapping ─────────────────────────────────────────
+# -- Language -> extension --
 
 LANG_EXT_MAP = {
     "GNU C": ".c", "GNU C11": ".c", "GNU C17": ".c", "C": ".c",
@@ -79,7 +80,7 @@ def sanitize(name: str) -> str:
     return name if name else "Unknown"
 
 
-# ── Codeforces API ────────────────────────────────────────────────────────────
+# -- CF API --
 
 def cf_api_request(method: str, params: Optional[Dict] = None) -> dict:
     if params is None:
@@ -97,66 +98,61 @@ def cf_api_request(method: str, params: Optional[Dict] = None) -> dict:
     url = f"{CF_API_BASE}/{method}"
     resp = requests.get(url, params=params, timeout=30)
     if resp.status_code != 200:
-        print(f"    API call {method} returned status {resp.status_code}")
+        print(f"    API {method} -> {resp.status_code}")
         try:
-            print(f"    Response: {resp.json()}")
+            print(f"    {resp.json()}")
         except Exception:
-            print(f"    Response text: {resp.text[:300]}")
+            print(f"    {resp.text[:300]}")
     resp.raise_for_status()
     data = resp.json()
     if data.get("status") != "OK":
-        raise RuntimeError(f"Codeforces API error: {data.get('comment', 'Unknown error')}")
+        raise RuntimeError(f"CF API error: {data.get('comment', 'Unknown')}")
     return data["result"]
 
 
 def verify_api_auth():
-    print("  Verifying API authentication...")
+    print("  Verifying CF API auth...")
     try:
         cf_api_request("user.friends", {"onlyOnline": "false"})
-        print("  API key is valid and authenticated!")
+        print("  API key valid!")
         return True
     except Exception as e:
-        print(f"  ERROR: API authentication failed: {e}")
-        print(f"  API Key (first 8 chars): {CF_API_KEY[:8]}...")
-        print(f"  API Secret set: {'yes' if CF_API_SECRET else 'NO - EMPTY!'}")
+        print(f"  ERROR: {e}")
+        print(f"  Key: {CF_API_KEY[:8]}... Secret set: {'yes' if CF_API_SECRET else 'NO'}")
         return False
 
 
 def fetch_accepted_submissions() -> List[dict]:
-    all_submissions = []
+    all_subs = []
     page = 1
-    page_size = 1000
     while True:
-        print(f"  Fetching submissions page {page}...")
+        print(f"  Fetching page {page}...")
         result = cf_api_request("user.status", {
             "handle": CF_HANDLE,
-            "from": str(((page - 1) * page_size) + 1),
-            "count": str(page_size),
+            "from": str((page - 1) * 1000 + 1),
+            "count": "1000",
             "includeSources": "true",
         })
         if not result:
             break
-        all_submissions.extend(result)
-        if len(result) < page_size:
+        all_subs.extend(result)
+        if len(result) < 1000:
             break
         page += 1
         time.sleep(2)
-    accepted = [s for s in all_submissions if s.get("verdict") == "OK"]
-    print(f"  Found {len(accepted)} accepted out of {len(all_submissions)} total.")
+    accepted = [s for s in all_subs if s.get("verdict") == "OK"]
+    print(f"  {len(accepted)} accepted / {len(all_subs)} total")
     return accepted
 
 
 def fetch_contest_names() -> Dict[int, str]:
-    print("  Fetching contest list...")
+    print("  Fetching contest names...")
     contests = cf_api_request("contest.list", {"gym": "false"})
     time.sleep(2)
-    mapping = {}
-    for c in contests:
-        mapping[c["id"]] = c.get("name", f"Contest_{c['id']}")
-    return mapping
+    return {c["id"]: c.get("name", f"Contest_{c['id']}") for c in contests}
 
 
-# ── GitHub operations ─────────────────────────────────────────────────────────
+# -- GitHub --
 
 def load_pushed_state(repo) -> Set[int]:
     try:
@@ -171,9 +167,9 @@ def save_pushed_state(repo, pushed_ids: Set[int], branch: str):
     content = json.dumps({"pushed_ids": sorted(pushed_ids)}, indent=2)
     try:
         existing = repo.get_contents(STATE_FILE, ref=branch)
-        repo.update_file(STATE_FILE, "Update pushed.json", content, existing.sha, branch=branch)
+        repo.update_file(STATE_FILE, "Update state", content, existing.sha, branch=branch)
     except GithubException:
-        repo.create_file(STATE_FILE, "Initialize pushed.json", content, branch=branch)
+        repo.create_file(STATE_FILE, "Init state", content, branch=branch)
 
 
 def batch_commit_files(repo, file_dict: Dict[str, str], message: str, branch: str):
@@ -191,21 +187,21 @@ def batch_commit_files(repo, file_dict: Dict[str, str], message: str, branch: st
     ref.edit(new_commit.sha)
 
 
-# ── Deduplication ─────────────────────────────────────────────────────────────
+# -- Dedup --
 
-def deduplicate_submissions(submissions: List[dict]) -> List[dict]:
+def deduplicate_submissions(subs: List[dict]) -> List[dict]:
     best = {}
-    for sub in submissions:
+    for sub in subs:
         problem = sub.get("problem", {})
-        contest_id = sub.get("contestId") or problem.get("contestId")
-        index = problem.get("index", "")
-        key = (contest_id, index)
+        cid = sub.get("contestId") or problem.get("contestId")
+        idx = problem.get("index", "")
+        key = (cid, idx)
         if key not in best or sub["id"] > best[key]["id"]:
             best[key] = sub
     return list(best.values())
 
 
-# ── Build file path ───────────────────────────────────────────────────────────
+# -- File path --
 
 def build_file_path(sub: dict, contest_names: Dict[int, str]) -> str:
     problem = sub.get("problem", {})
@@ -216,26 +212,24 @@ def build_file_path(sub: dict, contest_names: Dict[int, str]) -> str:
     rating = problem.get("rating")
 
     if rating is not None:
-        # Rated: Codeforces/800/1857A.cpp
         filename = f"{contest_id}{index}{ext}"
         path = f"{rating}/{filename}"
     else:
-        # Unrated: Codeforces/Contests/Codeforces_Round_900_Div_3_1234/A.cpp
         contest_name = contest_names.get(contest_id, f"Contest_{contest_id}")
         folder = sanitize(f"{contest_name}_{contest_id}")
         filename = f"{index}{ext}"
         path = f"Contests/{folder}/{filename}"
 
-    if GITHUB_TARGET_DIR:
-        path = f"{GITHUB_TARGET_DIR}/{path}"
+    if TARGET_DIR:
+        path = f"{TARGET_DIR}/{path}"
     return path
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# -- Main --
 
 def validate_config():
     missing = []
-    for var in ["CF_API_KEY", "CF_API_SECRET", "CF_HANDLE", "GITHUB_TOKEN", "GITHUB_REPO"]:
+    for var in ["CF_API_KEY", "CF_API_SECRET", "CF_HANDLE", "GH_PAT", "TARGET_REPO"]:
         if not os.environ.get(var):
             missing.append(var)
     if missing:
@@ -247,86 +241,77 @@ def main():
     validate_config()
     print(f"=== Codeforces AutoPush ===")
     print(f"Handle: {CF_HANDLE}")
-    print(f"Target repo: {GITHUB_REPO}")
-    print(f"Target dir: {GITHUB_TARGET_DIR or '(root)'}")
+    print(f"Target: {TARGET_REPO}")
+    print(f"Dir: {TARGET_DIR or '(root)'}")
     print()
 
-    print("[1/6] Connecting to GitHub...")
-    gh = Github(auth=Auth.Token(GITHUB_TOKEN))
-    repo = gh.get_repo(GITHUB_REPO)
-    default_branch = repo.default_branch
-    print(f"  Connected. Branch: {default_branch}")
+    print("[1/6] GitHub...")
+    gh = Github(auth=Auth.Token(GH_PAT))
+    repo = gh.get_repo(TARGET_REPO)
+    branch = repo.default_branch
+    print(f"  OK. Branch: {branch}")
 
-    print("[2/6] Verifying CF API auth...")
+    print("[2/6] CF auth...")
     if not verify_api_auth():
         sys.exit(1)
 
-    print("[3/6] Loading pushed state...")
+    print("[3/6] State...")
     pushed_ids = load_pushed_state(repo)
-    print(f"  Already pushed: {len(pushed_ids)}")
+    print(f"  Already: {len(pushed_ids)}")
 
-    print("[4/6] Fetching accepted submissions...")
+    print("[4/6] Fetching...")
     accepted = fetch_accepted_submissions()
     if not accepted:
-        print("  No accepted submissions found.")
+        print("  None found.")
         return
-
     unique = deduplicate_submissions(accepted)
-    print(f"  Unique problems: {len(unique)}")
-
-    new_submissions = [s for s in unique if s["id"] not in pushed_ids]
-    print(f"  New to push: {len(new_submissions)}")
-
-    if not new_submissions:
-        print("  Up to date. Nothing to push.")
+    print(f"  Unique: {len(unique)}")
+    new_subs = [s for s in unique if s["id"] not in pushed_ids]
+    print(f"  New: {len(new_subs)}")
+    if not new_subs:
+        print("  Up to date.")
         return
 
-    print("[5/6] Fetching contest names...")
+    print("[5/6] Contest names...")
     contest_names = fetch_contest_names()
 
-    print(f"[6/6] Building & pushing {len(new_submissions)} files...")
+    print(f"[6/6] Pushing {len(new_subs)} files...")
     file_map = {}
-    newly_pushed = set()
+    newly = set()
     skipped = 0
-
-    for sub in new_submissions:
+    for sub in new_subs:
         b64 = sub.get("sourceBase64", "")
+        source = None
         if b64:
             try:
                 source = base64.b64decode(b64).decode("utf-8", errors="replace")
             except Exception:
-                source = None
-        else:
-            source = None
-
+                pass
         if source:
-            path = build_file_path(sub, contest_names)
-            file_map[path] = source
-            newly_pushed.add(sub["id"])
+            file_map[build_file_path(sub, contest_names)] = source
+            newly.add(sub["id"])
         else:
-            problem = sub.get("problem", {})
-            print(f"    Skipped {problem.get('index','?')} (no source)")
+            p = sub.get("problem", {})
+            print(f"    Skip {p.get('index','?')} (no source)")
             skipped += 1
 
-    print(f"  Built: {len(file_map)} files, Skipped: {skipped}")
-
+    print(f"  Built: {len(file_map)}, Skipped: {skipped}")
     if not file_map:
-        print("  ERROR: No source code fetched.")
+        print("  ERROR: No source fetched.")
         sys.exit(1)
 
-    all_paths = list(file_map.keys())
-    for batch_start in range(0, len(all_paths), BATCH_SIZE):
-        batch_paths = all_paths[batch_start:batch_start + BATCH_SIZE]
-        batch = {p: file_map[p] for p in batch_paths}
-        batch_num = (batch_start // BATCH_SIZE) + 1
-        total_batches = (len(all_paths) + BATCH_SIZE - 1) // BATCH_SIZE
-        msg = f"Add {len(newly_pushed)} solutions" if total_batches == 1 else f"Solutions batch {batch_num}/{total_batches}"
-        print(f"  Committing batch {batch_num}/{total_batches} ({len(batch)} files)...")
-        batch_commit_files(repo, batch, msg, default_branch)
+    paths = list(file_map.keys())
+    for i in range(0, len(paths), BATCH_SIZE):
+        batch = {p: file_map[p] for p in paths[i:i+BATCH_SIZE]}
+        n = (i // BATCH_SIZE) + 1
+        t = (len(paths) + BATCH_SIZE - 1) // BATCH_SIZE
+        msg = f"Add {len(newly)} solutions" if t == 1 else f"Solutions {n}/{t}"
+        print(f"  Batch {n}/{t} ({len(batch)} files)")
+        batch_commit_files(repo, batch, msg, branch)
 
-    pushed_ids.update(newly_pushed)
-    save_pushed_state(repo, pushed_ids, default_branch)
-    print(f"\nDone! Pushed {len(newly_pushed)} solutions. Total: {len(pushed_ids)}")
+    pushed_ids.update(newly)
+    save_pushed_state(repo, pushed_ids, branch)
+    print(f"\nDone! Pushed {len(newly)}. Total: {len(pushed_ids)}")
 
 
 if __name__ == "__main__":
