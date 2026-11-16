@@ -49,7 +49,7 @@ def main():
         submitted = datetime.fromtimestamp(
             submission["creationTimeSeconds"], tz=timezone.utc
         ).astimezone(LOCAL_TZ)
-        date_dir = submitted.strftime("%Y-%m-%d")
+        date_dir = f"{submitted.year % 100:02d}/{submitted.month}/{submitted.day}"
         date_path = f"{autopush.TARGET_DIR}/{date_dir}/{filename}" if autopush.TARGET_DIR else f"{date_dir}/{filename}"
 
         try:
