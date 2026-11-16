@@ -1,0 +1,29 @@
+name: Codeforces Daily Date Folders
+
+on:
+  schedule:
+    - cron: "17 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests PyGithub
+
+      - name: Add date-folder copies
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          CF_API_SECRET: ${{ secrets.CF_API_SECRET }}
+          CF_HANDLE: ${{ secrets.CF_HANDLE }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          TARGET_REPO: ${{ secrets.TARGET_REPO }}
+          TARGET_DIR: ${{ secrets.TARGET_DIR }}
+        run: python classify_by_day.py
