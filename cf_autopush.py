@@ -257,7 +257,7 @@ def build_file_path(sub: dict, contest_names: Dict[int, str]) -> str:
 
     if rating is not None:
         filename = f"{contest_id}{index}_{safe_name}{ext}" if safe_name else f"{contest_id}{index}{ext}"
-        path = f"{rating}/{filename}"
+        path = f"Rating/{rating}/{filename}"
     else:
         contest_name = contest_names.get(contest_id)
         if contest_name and not contest_name.startswith(f"Contest_{contest_id}"):
